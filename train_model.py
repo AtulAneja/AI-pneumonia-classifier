@@ -22,6 +22,8 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_curve, 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from torch.multiprocessing import freeze_support
+from PIL import Image
+import random
 
 def plot_additional_metrics(model, test_loader, device):
     model.eval()
@@ -77,6 +79,48 @@ def plot_additional_metrics(model, test_loader, device):
     for i, count in enumerate(class_counts):
         plt.text(i, count, str(count), ha='center', va='bottom')
     plt.savefig('class_distribution.png')
+    plt.close()
+
+def visualize_predictions(model, test_dataset, device, num_images=5):
+    model.eval()
+    
+    # Get random indices for visualization
+    indices = random.sample(range(len(test_dataset)), num_images)
+    
+    plt.figure(figsize=(15, 3*num_images))
+    for idx, i in enumerate(indices):
+        # Get image and label
+        image, true_label = test_dataset[i]
+        
+        # Get prediction
+        with torch.no_grad():
+            image = image.unsqueeze(0).to(device)  # Add batch dimension
+            outputs = model(image)
+            probs = torch.softmax(outputs, dim=1)
+            pred_label = outputs.argmax(dim=1).item()
+            confidence = probs[0][pred_label].item()
+        
+        # Convert image back to numpy for plotting
+        img = image.squeeze(0).cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))  # Convert from CxHxW to HxWxC
+        # Denormalize
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        img = std * img + mean
+        img = np.clip(img, 0, 1)
+        
+        # Plot
+        plt.subplot(num_images, 1, idx + 1)
+        plt.imshow(img)
+        true_class = test_dataset.classes[true_label]
+        pred_class = test_dataset.classes[pred_label]
+        color = 'green' if true_label == pred_label else 'red'
+        plt.title(f'True: {true_class} | Predicted: {pred_class} (Confidence: {confidence:.2%})', 
+                 color=color)
+        plt.axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('prediction_examples.png', bbox_inches='tight', dpi=300)
     plt.close()
 
 def main():
@@ -262,6 +306,11 @@ def main():
     print("\nGenerating additional performance plots...")
     plot_additional_metrics(model, test_loader, device)
     print("Additional plots saved: roc_curve.png, precision_recall_curve.png, class_distribution.png")
+
+    # After generating other plots, add:
+    print("\nGenerating prediction visualizations...")
+    visualize_predictions(model, test_dataset, device)
+    print("Prediction examples saved as 'prediction_examples.png'")
 
 if __name__ == '__main__':
     freeze_support()
